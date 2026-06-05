@@ -1,0 +1,55 @@
+[tools]
+python = "3.12"
+uv = "latest"
+dbmate = "latest"
+ruff = "latest"
+ty = "latest"
+
+[env]
+DATABASE_URL = "postgresql://app:app@localhost:5432/app"
+
+# ── local dev tasks ──────────────────────────────────────────────────────────
+
+[tasks.install]
+description = "Install all dependencies (run once after clone)"
+dir = "backend"
+run = "uv sync --group dev"
+
+[tasks.db]
+description = "Start postgres in the background (needed by all other tasks)"
+run = "docker compose up postgres -d"
+
+[tasks.migrate]
+description = "Run pending database migrations"
+run = "dbmate up"
+
+[tasks.backend]
+description = "Run FastAPI dev server"
+dir = "backend"
+run = "uv run uvicorn backend.main:app --reload"
+
+[tasks.worker]
+description = "Run procrastinate worker"
+dir = "backend"
+run = "uv run python -m backend.worker"
+
+[tasks.test]
+description = "Run test suite"
+dir = "backend"
+run = "uv run pytest"
+
+[tasks.lint]
+description = "Run ruff + ty"
+dir = "backend"
+run = ["ruff check --fix .", "ruff format .", "ty check"]
+
+[tasks.hooks]
+description = "Install pre-commit hooks"
+dir = "backend"
+run = "uv run pre-commit install"
+
+# ── docker compose tasks ─────────────────────────────────────────────────────
+
+[tasks.dev]
+description = "Start the full stack with docker compose"
+run = "docker compose up --build"
