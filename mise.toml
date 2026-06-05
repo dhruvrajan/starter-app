@@ -4,6 +4,7 @@ uv = "latest"
 dbmate = "latest"
 ruff = "latest"
 ty = "latest"
+pre-commit = "latest"
 
 [env]
 DATABASE_URL = "postgresql://app:app@localhost:5432/app"
@@ -45,8 +46,7 @@ run = ["ruff check --fix .", "ruff format .", "ty check"]
 
 [tasks.hooks]
 description = "Install pre-commit hooks"
-dir = "backend"
-run = "uv run pre-commit install"
+run = "pre-commit install"
 
 # ── docker compose tasks ─────────────────────────────────────────────────────
 

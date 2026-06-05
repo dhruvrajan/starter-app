@@ -13,43 +13,70 @@ FastAPI + asyncpg + Procrastinate + PostgreSQL (pgvector + AGE).
 | Database | PostgreSQL 17 + pgvector + AGE |
 | Dev env | mise + uv |
 
-## Quick start
+---
 
-## Local Dev:
+## Local dev setup
 
-First install the following:
-- mise from https://mise.jdx.dev/
-- 
+### Prerequisites
 
-### Full stack (Docker)
+Install these manually before anything else:
+
+- **mise** — manages python, uv, dbmate, ruff, ty, pre-commit: https://mise.jdx.dev/getting-started.html
+- **Docker** — needed for postgres (and optionally the full stack): https://docs.docker.com/get-docker/
+
+### First-time setup
+
+Run these once after cloning:
 
 ```bash
-mise install
+mise install          # installs python 3.12, uv, dbmate, ruff, ty, pre-commit
+mise run install      # installs Python deps into backend/.venv
+mise run hooks        # wires up pre-commit git hooks
+```
+
+### Running locally
+
+Postgres runs in Docker; the app code runs natively.
+
+```bash
+mise run db           # start postgres container (keep this running)
+mise run migrate      # apply pending migrations (run after db is healthy)
+```
+
+Then in separate terminals:
+
+```bash
+mise run backend      # FastAPI on http://localhost:8000 with --reload
+mise run worker       # procrastinate worker
+```
+
+Other tasks:
+
+```bash
+mise run test         # pytest
+mise run lint         # ruff + ty
+```
+
+`DATABASE_URL` is pre-configured in `mise.toml` — no `.env` file needed locally.
+
+### Full stack in Docker
+
+Runs everything in containers (no local Python needed):
+
+```bash
 docker compose up --build
 ```
 
 - API: http://localhost:8000
 - Frontend: http://localhost:3000
 
-### Local dev (no Docker for app code)
-
-```bash
-mise install          # installs python, uv, dbmate
-mise run install      # uv sync --group dev
-mise run db           # starts postgres in Docker
-mise run migrate      # applies pending migrations
-mise run backend      # FastAPI on :8000 with --reload
-mise run worker       # procrastinate worker
-mise run test         # pytest
-```
-
-`DATABASE_URL` is set in `mise.toml` for local dev.
-
 ---
 
 ## How to add a table
 
 ### 1. Create a migration
+
+Run from the repo root:
 
 ```bash
 dbmate new create_items
@@ -61,8 +88,8 @@ Edit the generated file:
 ```sql
 -- migrate:up
 CREATE TABLE items (
-    id   BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-    name TEXT NOT NULL,
+    id         BIGINT PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+    name       TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -80,10 +107,10 @@ mise run migrate
 ### 3. Query it from FastAPI
 
 ```python
-# backend/main.py
+# backend/backend/main.py
 from fastapi import Depends
 import asyncpg
-from backend.main import get_pool
+from backend.main import app, get_pool
 
 @app.get("/items")
 async def list_items(pool: asyncpg.Pool = Depends(get_pool)):
@@ -106,7 +133,7 @@ async def create_item(name: str, pool: asyncpg.Pool = Depends(get_pool)):
 ## How to add a background task
 
 ```python
-# backend/worker.py
+# backend/backend/worker.py
 
 @app.task
 async def send_email(address: str, subject: str) -> None:
@@ -116,7 +143,7 @@ async def send_email(address: str, subject: str) -> None:
 await send_email.defer_async(address="user@example.com", subject="Hi")
 ```
 
-The worker picks it up automatically. Task state is stored in the `procrastinate_*` tables (applied by `worker.py` on startup via `apply_schema_async`).
+The worker picks it up automatically. Task state is stored in the `procrastinate_*` tables, applied by the worker on startup.
 
 ---
 
@@ -129,17 +156,19 @@ CREATE INDEX ON items USING hnsw (embedding vector_cosine_ops);
 ```
 
 ```python
-# query nearest neighbours:
 rows = await pool.fetch(
     "SELECT id, name FROM items ORDER BY embedding <=> $1 LIMIT 5",
-    "[0.1, 0.2, ...]",  # pass as a string or use pgvector's Python type
+    "[0.1, 0.2, ...]",
 )
 ```
 
+---
+
 ## How to use AGE (graph)
 
+AGE requires loading the extension and setting the search path per session:
+
 ```python
-# Each session must load the AGE extension before using Cypher:
 async with pool.acquire() as conn:
     await conn.execute("LOAD 'age'")
     await conn.execute("SET search_path = ag_catalog, \"$user\", public")
